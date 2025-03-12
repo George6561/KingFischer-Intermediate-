@@ -42,7 +42,7 @@ import java.util.List;
 public class ChessBoard {
 
     // The chessboard is represented as an 8x8 2D array.
-    private static final int[][] board = new int[][]{
+    private final int[][] board = new int[][]{
         {-2, -3, -4, -5, -6, -4, -3, -2}, // Row 0: Black's major pieces
         {-1, -1, -1, -1, -1, -1, -1, -1}, // Row 1: Black's pawns
         {0, 0, 0, 0, 0, 0, 0, 0}, // Empty squares
@@ -280,18 +280,25 @@ public class ChessBoard {
                 int piece = board[row][col];
                 if ((player == Player.WHITE && piece > 0) || (player == Player.BLACK && piece < 0)) {
                     List<int[]> pieceMoves = getMovesForPiece(row, col, piece);
+
                     for (int[] move : pieceMoves) {
                         int capturedPiece = board[move[2]][move[3]];
                         movePiece(move[0], move[1], move[2], move[3]);
-                        if (!isInCheck(player)) {
-                            legalMoves.add(move);  // Only add the move if it doesn't leave the king in check
-                        }
+
+                        boolean stillInCheck = isInCheck(player);
+
+                        // Undo the move
                         board[move[0]][move[1]] = piece;
                         board[move[2]][move[3]] = capturedPiece;
+
+                        if (!stillInCheck) {
+                            legalMoves.add(move);
+                        }
                     }
                 }
             }
         }
+
         return legalMoves;
     }
 
@@ -559,13 +566,6 @@ public class ChessBoard {
      * @return True if the king is in check, false otherwise.
      */
     public boolean isInCheck(Player player) {
-        if (checkingForCheck) {
-            return false; // Prevent further recursion if already checking for check
-        }
-
-        checkingForCheck = true; // Set the flag to indicate check detection is in progress
-
-        // Find the king's position
         int kingRow = -1, kingCol = -1;
         for (int row = 0; row < 8; row++) {
             for (int col = 0; col < 8; col++) {
@@ -577,23 +577,35 @@ public class ChessBoard {
                 }
             }
             if (kingRow != -1) {
-                break;  // Exit loop once the king is found
-            }
-        }
-
-        // Check if the king is attacked by any opponent piece
-        boolean inCheck = false;
-        List<int[]> opponentMoves = getAllLegalMoves(player == Player.WHITE
-                ? Player.BLACK : Player.WHITE);
-        for (int[] move : opponentMoves) {
-            if (move[2] == kingRow && move[3] == kingCol) {
-                inCheck = true;  // The king is in check
                 break;
             }
         }
 
-        checkingForCheck = false; // Reset the flag after check detection
-        return inCheck;
+        Player opponent = (player == Player.WHITE) ? Player.BLACK : Player.WHITE;
+
+        // Use this simplified call that doesn't check for checks itself
+        List<int[]> opponentMoves = getAllPotentialMoves(opponent);
+
+        for (int[] move : opponentMoves) {
+            if (move[2] == kingRow && move[3] == kingCol) {
+                return true;  // The king is in check
+            }
+        }
+
+        return false;
+    }
+
+    public List<int[]> getAllPotentialMoves(Player player) {
+        List<int[]> potentialMoves = new ArrayList<>();
+        for (int row = 0; row < 8; row++) {
+            for (int col = 0; col < 8; col++) {
+                int piece = board[row][col];
+                if ((player == Player.WHITE && piece > 0) || (player == Player.BLACK && piece < 0)) {
+                    potentialMoves.addAll(getMovesForPiece(row, col, piece));
+                }
+            }
+        }
+        return potentialMoves;
     }
 
     /**
@@ -656,7 +668,25 @@ public class ChessBoard {
         move = Player.WHITE;
         lastMove = null; // Clear the last move tracking if necessary
 
-        System.out.println("Board has been reset to the starting position.");
+    }
+
+    public ChessBoard copy() {
+        ChessBoard newBoard = new ChessBoard();  // Create a new ChessBoard instance
+
+        // Copy the board state
+        for (int i = 0; i < 8; i++) {
+            newBoard.board[i] = this.board[i].clone();  // Deep copy each row
+        }
+
+        // Copy the turn state
+        newBoard.move = this.move;
+
+        // Copy the last move if needed
+        if (this.lastMove != null) {
+            newBoard.lastMove = this.lastMove.clone();
+        }
+
+        return newBoard;
     }
 
 }

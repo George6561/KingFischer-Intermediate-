@@ -29,7 +29,7 @@ public class ChessGame {
     public ChessGame(ChessWindow chessWindow) {
         this.chessWindow = chessWindow;
         this.stockfish = new StockfishConnector();
-        this.monteCarlo = new MonteCarloMoves(); // Use the shared board inside Monte Carlo
+        this.monteCarlo = new MonteCarloMoves();
         this.rawMoves = new ArrayList<>();
     }
 
@@ -95,7 +95,8 @@ public class ChessGame {
     }
 
     /**
-     * Main game loop where Stockfish plays White and MonteCarloMoves plays Black.
+     * Main game loop where Stockfish plays White and MonteCarloMoves plays
+     * Black.
      */
     private void playOneGame() throws IOException, InterruptedException {
         while (true) {
@@ -180,10 +181,16 @@ public class ChessGame {
     private String makeStockfishMove() throws IOException {
         stockfish.sendCommand("position startpos moves " + getMoveHistory());
         stockfish.sendCommand("go movetime 1000");
-
         String bestMove = stockfish.getBestMove();
-        if (bestMove == null || bestMove.isEmpty()) {
-            return "0000"; // No valid move found
+
+        if (bestMove != null && !bestMove.equals("0000")) {
+            int fromCol = bestMove.charAt(0) - 'a';
+            int fromRow = 8 - Character.getNumericValue(bestMove.charAt(1));
+            int toCol = bestMove.charAt(2) - 'a';
+            int toRow = 8 - Character.getNumericValue(bestMove.charAt(3));
+
+            SharedBoard.getBoard().movePiece(fromRow, fromCol, toRow, toCol);
+            SharedBoard.getBoard().nextMove(); // <<<< HERE: CHANGE TURN AFTER MOVE
         }
 
         return bestMove;
@@ -195,12 +202,11 @@ public class ChessGame {
     private String makeMonteCarloMoveForBlack() {
         int[] move = monteCarlo.getRandomMoveForBlack();
         if (move == null || move.length != 4) {
-            return "0000"; // No move available, game over
+            return "0000"; // Game over
         }
 
-        // Apply the move to the shared board
         SharedBoard.getBoard().movePiece(move[0], move[1], move[2], move[3]);
-        SharedBoard.getBoard().nextMove();
+        SharedBoard.getBoard().nextMove(); // Explicit turn change (Black -> White)
 
         return toChessNotation(move);
     }

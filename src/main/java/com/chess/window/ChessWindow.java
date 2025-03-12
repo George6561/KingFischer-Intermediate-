@@ -2,6 +2,7 @@ package com.chess.window;
 
 import com.chess.stockfish.ChessBoard;
 import com.chess.images.ChessPiece;
+import com.chess.montecarlo.SharedBoard;
 import javafx.application.Application;
 import javafx.scene.Scene;
 import javafx.scene.image.Image;
@@ -110,7 +111,8 @@ public class ChessWindow extends Application {
         ImageView boardImageView = new ImageView(chessBoardImage);
 
         // Initialize the chessboard state
-        chessBoard = new ChessBoard();
+        // Use the shared board instead
+        chessBoard = SharedBoard.getBoard();
         boardPane.getChildren().add(boardImageView);
         root.getChildren().add(boardPane);
 

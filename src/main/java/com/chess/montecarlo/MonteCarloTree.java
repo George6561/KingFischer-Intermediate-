@@ -1,41 +1,49 @@
 package com.chess.montecarlo;
 
 import com.chess.stockfish.ChessBoard;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
 /**
- * Monte Carlo Tree for random game simulations.
+ * Monte Carlo Tree for random game simulations with a 5-second time limit.
  */
 public class MonteCarloTree {
 
-    private ChessBoard board;
-    private Random random;
-    private Map<String, Integer> moveScores; // Track scores per move
+    private final ChessBoard board;
+    private final Random random;
+    private final Map<String, Integer> moveScores; // Track scores per move
+    private static final long TIME_LIMIT_MS = 5000; // 5 seconds
 
     /**
-     * Constructor initializes the Monte Carlo Tree.
-     *
-     * @param board The chessboard object.
+     * Constructor initializes the Monte Carlo Tree using a **copy** of the shared board.
      */
-    public MonteCarloTree(ChessBoard board) {
-        this.board = board; // Use the shared board, not a copy
+    public MonteCarloTree() {
+        this.board = SharedBoard.getBoard().copy(); // ✅ Use board.copyBoard() for safe simulations
         this.random = new Random();
         this.moveScores = new HashMap<>();
     }
 
     /**
-     * Simulates a random game for a given ply depth.
-     *
-     * @param maxPly The maximum depth to simulate.
+     * Simulates multiple random games within a time limit.
      */
-    public void simulateGame(int maxPly) {
-        // Instead of cloning, just store a reference to the shared board
-        ChessBoard.Player originalPlayer = board.currentPlayer();
+    public void runSimulation() {
+        long startTime = System.currentTimeMillis();
+        while (System.currentTimeMillis() - startTime < TIME_LIMIT_MS) {
+            simulateSingleGame();
+        }
+    }
 
-        List<int[]> legalMoves = board.getAllLegalMoves(originalPlayer);
+    /**
+     * Simulates a single random game to a fixed depth.
+     */
+    private void simulateSingleGame() {
+        ChessBoard simulationBoard = board.copy(); 
+        ChessBoard.Player originalPlayer = simulationBoard.currentPlayer();
+        List<int[]> legalMoves = simulationBoard.getAllLegalMoves(originalPlayer);
+
         if (legalMoves.isEmpty()) {
             return; // No moves possible
         }
@@ -43,21 +51,20 @@ public class MonteCarloTree {
         int[] firstMove = null;
         int evaluation = 0;
 
-        for (int i = 0; i < maxPly; i++) {
-            legalMoves = board.getAllLegalMoves(board.currentPlayer());
+        for (int i = 0; i < 8; i++) {
+            legalMoves = simulationBoard.getAllLegalMoves(simulationBoard.currentPlayer());
             if (legalMoves.isEmpty()) {
                 break;
             }
 
             int[] chosenMove = legalMoves.get(random.nextInt(legalMoves.size()));
             if (i == 0) {
-                firstMove = chosenMove; // Track first move
+                firstMove = chosenMove;
             }
 
-            board.movePiece(chosenMove[0], chosenMove[1], chosenMove[2], chosenMove[3]);
-            board.nextMove(); // Switch turn
-
-            evaluation += MoveRating.evaluate(board);
+            simulationBoard.movePiece(chosenMove[0], chosenMove[1], chosenMove[2], chosenMove[3]);
+            simulationBoard.nextMove();
+            evaluation += MoveRating.evaluate(simulationBoard);
         }
 
         if (firstMove != null) {
@@ -67,49 +74,27 @@ public class MonteCarloTree {
     }
 
     /**
-     * Returns a random legal move for Black.
-     *
-     * @return A random move for Black as [fromRow, fromCol, toRow, toCol].
-     */
-    public int[] getRandomMoveForBlack() {
-        if (board.currentPlayer() != ChessBoard.Player.BLACK) {
-            return null; // It's not Black's turn
-        }
-
-        List<int[]> legalMoves = board.getAllLegalMoves(ChessBoard.Player.BLACK);
-        if (legalMoves.isEmpty()) {
-            return null; // No moves available
-        }
-
-        return legalMoves.get(random.nextInt(legalMoves.size())); // Pick a random move
-    }
-
-    /**
-     * Restores the board to its original state.
-     *
-     * @param originalBoard The saved board state.
-     * @param originalPlayer The saved player turn.
-     */
-    private void restoreBoard(int[][] originalBoard, ChessBoard.Player originalPlayer) {
-        for (int row = 0; row < 8; row++) {
-            System.arraycopy(originalBoard[row], 0, board.getBoard()[row], 0, 8);
-        }
-        while (board.currentPlayer() != originalPlayer) {
-            board.nextMove();
-        }
-    }
-
-    /**
      * Returns the best move based on the highest rating.
      *
      * @return The best move as [fromRow, fromCol, toRow, toCol].
      */
     public int[] getBestMove() {
-        return moveScores.entrySet()
+        if (moveScores.isEmpty()) {
+            // If Monte Carlo fails, pick a random move instead of returning -1s
+            List<int[]> fallbackMoves = board.getAllLegalMoves(board.currentPlayer());
+            if (!fallbackMoves.isEmpty()) {
+                return fallbackMoves.get(random.nextInt(fallbackMoves.size()));  // Pick a random valid move
+            }
+
+            return new int[]{-1, -1, -1, -1}; // No valid move found
+        }
+
+        int[] scores = moveScores.entrySet()
                 .stream()
                 .max(Map.Entry.comparingByValue())
                 .map(entry -> stringToMove(entry.getKey()))
-                .orElse(new int[]{-1, -1, -1, -1}); // No valid move found
+                .orElse(new int[]{-1, -1, -1, -1});
+        return scores;
     }
 
     /**
@@ -124,7 +109,11 @@ public class MonteCarloTree {
      */
     private int[] stringToMove(String moveStr) {
         String[] parts = moveStr.split(",");
-        return new int[]{Integer.parseInt(parts[0]), Integer.parseInt(parts[1]),
-            Integer.parseInt(parts[2]), Integer.parseInt(parts[3])};
+        return new int[]{
+            Integer.parseInt(parts[0]),
+            Integer.parseInt(parts[1]),
+            Integer.parseInt(parts[2]),
+            Integer.parseInt(parts[3])
+        };
     }
 }
