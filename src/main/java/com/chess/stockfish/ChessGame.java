@@ -1,6 +1,7 @@
 package com.chess.stockfish;
 
 import com.chess.montecarlo.MonteCarloMoves;
+import com.chess.montecarlo.SharedBoard;
 import com.chess.window.ChessWindow;
 import javafx.application.Platform;
 
@@ -16,7 +17,7 @@ public class ChessGame {
 
     private ChessWindow chessWindow;        // UI component for the chessboard
     private StockfishConnector stockfish;   // Stockfish AI for White
-    private MonteCarloMoves monteCarlo;     // Random move generator for Black
+    private MonteCarloMoves monteCarlo;     // Monte Carlo for Black
     private List<String> rawMoves;          // Move history
     private boolean isWhiteToMove = true;   // Track turns
 
@@ -27,14 +28,14 @@ public class ChessGame {
      */
     public ChessGame(ChessWindow chessWindow) {
         this.chessWindow = chessWindow;
-        this.stockfish = new StockfishConnector(); // White plays with Stockfish
-        this.monteCarlo = new MonteCarloMoves(chessWindow.getBoard()); // Black plays with MonteCarlo
+        this.stockfish = new StockfishConnector();
+        this.monteCarlo = new MonteCarloMoves(); // Use the shared board inside Monte Carlo
         this.rawMoves = new ArrayList<>();
     }
 
     /**
      * Starts the chess game loop where White uses Stockfish and Black plays
-     * random moves.
+     * Monte Carlo moves.
      *
      * @throws IOException If Stockfish communication fails.
      * @throws InterruptedException If UI updates are interrupted.
@@ -94,12 +95,7 @@ public class ChessGame {
     }
 
     /**
-     * Main game loop where Stockfish plays White and MonteCarloMoves plays
-     * Black.
-     *
-     * @throws IOException If an error occurs while generating moves.
-     * @throws InterruptedException If the thread is interrupted during UI
-     * updates.
+     * Main game loop where Stockfish plays White and MonteCarloMoves plays Black.
      */
     private void playOneGame() throws IOException, InterruptedException {
         while (true) {
@@ -127,61 +123,59 @@ public class ChessGame {
                 } catch (Exception e) {
                     e.printStackTrace();
                 } finally {
-                    latch.countDown();  // Ensure UI update is complete before continuing
+                    latch.countDown();
                 }
             });
 
-            latch.await();  // Wait until the move is fully applied before switching turns
+            latch.await(); // Ensure UI update is complete before continuing
 
-            // Check for checkmate **after move execution**
-            if (chessWindow.getBoard().isCheckmate(chessWindow.getBoard().currentPlayer())) {
+            // Print the board to verify shared state
+            System.out.println("Updated Board:");
+            SharedBoard.getBoard().printBoardWithIndices();
+
+            // Check for checkmate after move execution
+            if (SharedBoard.getBoard().isCheckmate(SharedBoard.getBoard().currentPlayer())) {
                 System.out.println("Checkmate detected! Resetting board and starting a new game...");
 
                 Platform.runLater(() -> {
-                    chessWindow.getBoard().resetBoard();
-                    rawMoves.clear();  // Clear move history
+                    SharedBoard.getBoard().resetBoard();
+                    rawMoves.clear();
                 });
 
                 isWhiteToMove = true;  // Ensure White always starts
-                Thread.sleep(2000);  // Give a short delay before restarting
+                Thread.sleep(2000);
                 playOneGame();  // Restart the game loop
                 return;
             }
 
-            Thread.sleep(500);  // Small delay for readability
-            isWhiteToMove = !isWhiteToMove;  // Flip turn only AFTER the move is fully processed
+            Thread.sleep(500);
+            isWhiteToMove = !isWhiteToMove;  // Flip turn after the move is processed
         }
     }
 
     /**
-     * Keeps playing multiple games in a loop until the user manually stops it.
-     *
-     * @throws IOException If an error occurs in communication with Stockfish.
-     * @throws InterruptedException If the thread is interrupted.
+     * Keeps playing multiple games in a loop until manually stopped.
      */
     public void playMultipleGames() throws IOException, InterruptedException {
         System.out.println("CALLING PLAY MULTIPLE GAMES FUNCTIONS");
-        
+
         while (true) {
             System.out.println("Starting a new game...");
 
             // Reset the board properly before playing the next game
             Platform.runLater(() -> {
-                chessWindow.getBoard().resetBoard();  // Reset the board
-                rawMoves.clear();                    // Clear move history
-                isWhiteToMove = true;                 // Ensure White starts first
+                SharedBoard.getBoard().resetBoard();
+                rawMoves.clear();
+                isWhiteToMove = true;
             });
 
-            Thread.sleep(2000);  // Wait for UI update to complete before starting
-
-            playOneGame();  // Start a new game
+            Thread.sleep(2000);
+            playOneGame();
         }
     }
 
     /**
      * Generates a move for White using Stockfish.
-     *
-     * @return The best move suggested by Stockfish in UCI notation.
      */
     private String makeStockfishMove() throws IOException {
         stockfish.sendCommand("position startpos moves " + getMoveHistory());
@@ -197,26 +191,41 @@ public class ChessGame {
 
     /**
      * Generates a random move for Black using MonteCarloMoves.
-     *
-     * @return The randomly selected legal move in algebraic notation.
      */
     private String makeMonteCarloMoveForBlack() {
-        return monteCarlo.getRandomMoveForBlack();
+        int[] move = monteCarlo.getRandomMoveForBlack();
+        if (move == null || move.length != 4) {
+            return "0000"; // No move available, game over
+        }
+
+        // Apply the move to the shared board
+        SharedBoard.getBoard().movePiece(move[0], move[1], move[2], move[3]);
+        SharedBoard.getBoard().nextMove();
+
+        return toChessNotation(move);
+    }
+
+    /**
+     * Converts an int[] move to algebraic notation (e.g., "e2e4").
+     */
+    private String toChessNotation(int[] move) {
+        char fromFile = (char) ('a' + move[1]);
+        int fromRank = 8 - move[0];
+        char toFile = (char) ('a' + move[3]);
+        int toRank = 8 - move[2];
+
+        return "" + fromFile + fromRank + toFile + toRank;
     }
 
     /**
      * Updates the move history with the given move.
-     *
-     * @param move The move in UCI notation to add to the history.
      */
     public void updateMoveHistory(String move) {
         rawMoves.add(move);
     }
 
     /**
-     * Retrieves the move history as a single formatted string.
-     *
-     * @return The move history in UCI notation.
+     * Retrieves the move history as a formatted string.
      */
     public String getMoveHistory() {
         return String.join(" ", rawMoves);

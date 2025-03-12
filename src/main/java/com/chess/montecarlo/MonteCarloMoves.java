@@ -5,52 +5,48 @@ import java.util.List;
 import java.util.Random;
 
 /**
- * A simple move generator that selects a random legal move for Black.
+ * Monte Carlo Move Generator.
+ * Uses the shared ChessBoard instance for move simulations.
  */
 public class MonteCarloMoves {
 
-    private final ChessBoard chessBoard;
-    private final Random random;
+    private ChessBoard board;
+    private Random random;
+    private static final int MAX_PLY = 8; // 8 half-moves (4 full moves)
+    private static final long TIME_LIMIT_MS = 5000; // 5 seconds
 
     /**
-     * Constructor initializes the move generator with a given chessboard.
-     *
-     * @param chessBoard The chessboard object that maintains the game state.
+     * Constructor initializes with the shared board.
      */
-    public MonteCarloMoves(ChessBoard chessBoard) {
-        this.chessBoard = chessBoard;
+    public MonteCarloMoves() {
+        this.board = SharedBoard.getBoard(); // Use the shared board
         this.random = new Random();
     }
 
     /**
-     * Retrieves a random legal move for Black.
-     *
-     * @return A string representing the randomly selected move in algebraic notation (e.g., "e2e4").
+     * Runs Monte Carlo simulations and returns the best move.
+     * @return The best move as [fromRow, fromCol, toRow, toCol].
      */
-    public String getRandomMoveForBlack() {
-        List<int[]> legalMoves = chessBoard.getAllLegalMoves(ChessBoard.Player.BLACK);
+    public int[] getBestMonteCarloMove() {
+        long startTime = System.currentTimeMillis();
+        MonteCarloTree tree = new MonteCarloTree(board);
 
-        if (legalMoves.isEmpty()) {
-            return "0000"; // No legal moves (checkmate or stalemate)
+        while (System.currentTimeMillis() - startTime < TIME_LIMIT_MS) {
+            tree.simulateGame(MAX_PLY);
         }
 
-        int[] randomMove = legalMoves.get(random.nextInt(legalMoves.size()));
-
-        return convertMoveToAlgebraic(randomMove);
+        return tree.getBestMove();
     }
 
     /**
-     * Converts a move from [fromRow, fromCol, toRow, toCol] to algebraic notation.
-     *
-     * @param move The move as an integer array.
-     * @return The move in algebraic notation (e.g., "e2e4").
+     * Generates a random move for Black using Monte Carlo.
+     * @return The move as [fromRow, fromCol, toRow, toCol], or null if no move is available.
      */
-    private String convertMoveToAlgebraic(int[] move) {
-        char fromFile = (char) ('a' + move[1]);
-        char fromRank = (char) ('8' - move[0]);
-        char toFile = (char) ('a' + move[3]);
-        char toRank = (char) ('8' - move[2]);
-
-        return "" + fromFile + fromRank + toFile + toRank;
+    public int[] getRandomMoveForBlack() {
+        List<int[]> legalMoves = board.getAllLegalMoves(ChessBoard.Player.BLACK);
+        if (legalMoves.isEmpty()) {
+            return null; // No legal moves available
+        }
+        return legalMoves.get(random.nextInt(legalMoves.size())); // Pick a random move
     }
 }
